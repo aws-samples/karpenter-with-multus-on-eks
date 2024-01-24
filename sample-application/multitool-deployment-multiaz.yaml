@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scaleouttestappmulti
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: scaleouttestappmulti
+  template:
+    metadata:
+      labels:
+        service: scaleouttestappmulti
+        app: scaleouttestappmulti
+    spec:
+      containers:
+      - image: praqma/network-multitool:extra
+        name: scaleouttestappmulti
+        resources:
+          limits:
+            cpu: 1
+            memory: 1Gi
+          requests:
+            cpu: 1
+            memory: 1Gi
