@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scaleouttestappaz1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: scaleouttestappaz1
+  template:
+    metadata:
+      labels:
+        service: scaleouttestappaz1
+        app: scaleouttestappaz1
+      annotations:
+        k8s.v1.cni.cncf.io/networks:  nad-multussubnet1az1-ipv4, nad-multussubnet2az1-ipv4
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: topology.kubernetes.io/zone
+                operator: In
+                values:
+                - ##AVAILABILITY_ZONE1##
+              - key: karpenter-node
+                operator: Exists
+      containers:
+      - image: praqma/network-multitool:extra
+        name: scaleouttestappaz1
+        resources:
+          limits:
+            cpu: 2
+            memory: 2Gi
+          requests:
+            cpu: 2
+            memory: 2Gi
