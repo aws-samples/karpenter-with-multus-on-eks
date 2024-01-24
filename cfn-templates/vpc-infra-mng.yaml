@@ -1,0 +1,857 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  A new VPC creation with EKS and NG. 1 Main VPC, IGW, NATGW, 2 Public Subnets, 2 Private Subnets (each per AZ), 4 Subnets for Multus
+
+Metadata:
+  "AWS::CloudFormation::Interface":
+    ParameterGroups:
+      - Label:
+          default: VPC Configuration
+        Parameters:
+          - Vpc1Cidr
+          - AvailabilityZones
+          - PubMgmtSubnetAz1Cidr
+          - PubMgmtSubnetAz2Cidr
+          - PrivK8sSubnetAz1Cidr
+          - PrivK8sSubnetAz2Cidr
+      - Label:
+          default: Multus networks
+        Parameters:
+          - MultusSubnet1Az1Cidr
+          - MultusSubnet1Az2Cidr
+          - MultusSubnet2Az1Cidr
+          - MultusSubnet2Az2Cidr
+      - Label:
+          default: EKS Managed Node Group Configuration
+        Parameters:
+          - NodeAutoScalingGroupMinSize
+          - NodeAutoScalingGroupDesiredCapacity
+          - NodeAutoScalingGroupMaxSize
+          - CapacityType
+          - NodeInstanceType
+
+Parameters:
+  AvailabilityZones:
+    Description: List of Availability Zones to use for the subnets in the VPC. Select 2 of them.
+    AllowedPattern : ".+"
+    Type: List<AWS::EC2::AvailabilityZone::Name>
+  Vpc1Cidr:
+    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]))$
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16–28
+    Default: 10.0.0.0/16
+    Description: CIDR block for the Main VPC1.
+    Type: String
+  PubMgmtSubnetAz1Cidr:
+    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]))$
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16–28
+    Default: 10.0.0.0/24
+    Description: CIDR block for the Public Subnet in AZ1.
+    Type: String
+  PubMgmtSubnetAz2Cidr:
+    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]))$
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16–28
+    Default: 10.0.1.0/24
+    Description: CIDR block for the Public Subnet in AZ2.
+    Type: String
+  PrivK8sSubnetAz1Cidr:
+    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]))$
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16–28
+    Default: 10.0.2.0/24
+    Description: CIDR block for the Private Subnet in AZ1. This will be used for the main K8s network.
+    Type: String
+  PrivK8sSubnetAz2Cidr:
+    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]))$
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16–28
+    Default: 10.0.3.0/24
+    Description: CIDR block for the Private Subnet in AZ2. This will be used for the main K8s network.
+    Type: String
+  MultusSubnet1Az1Cidr:
+    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]))$
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16–28
+    Default: 10.0.4.0/24
+    Description: CIDR block for the Multus Subnet 1 in AZ1.
+    Type: String
+  MultusSubnet1Az2Cidr:
+    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]))$
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16–28
+    Default: 10.0.5.0/24
+    Description: CIDR block for the Multus Subnet 1 in AZ2.
+    Type: String
+  MultusSubnet2Az1Cidr:
+    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]))$
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16–28
+    Default: 10.0.6.0/24
+    Description: CIDR block for the Multus Subnet 2 in AZ1.
+    Type: String
+  MultusSubnet2Az2Cidr:
+    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]))$
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16–28
+    Default: 10.0.7.0/24
+    Description: CIDR block for the X-ENI Subnet 2 in AZ2.
+    Type: String
+  NodeAutoScalingGroupDesiredCapacity:
+    Type: Number
+    Default: 2
+    Description: Desired capacity of Node Group ASG.
+  NodeAutoScalingGroupMaxSize:
+    Type: Number
+    Default: 3
+    Description: Maximum size of Node Group ASG. Set to at least 1 greater than NodeAutoScalingGroupDesiredCapacity.
+  NodeAutoScalingGroupMinSize:
+    Type: Number
+    Default: 1
+    Description: Minimum size of Node Group ASG.
+  CapacityType:
+    Type: String
+    Default: ON_DEMAND
+    Description: Capacity Type for EKS Managed Node Group
+    AllowedValues:
+      - ON_DEMAND
+      - SPOT
+  NodeInstanceType:
+    Type: String
+    Default: c5.large
+    AllowedValues:
+      - c5.large
+      - c5.xlarge
+      - c5.2xlarge
+      - c5.4xlarge
+      - c5.9xlarge
+      - c5.12xlarge
+      - c5.18xlarge
+      - c5.24xlarge
+      - c5.metal
+      - c5d.large
+      - c5d.xlarge
+      - c5d.2xlarge
+      - c5d.4xlarge
+      - c5d.9xlarge
+      - c5d.18xlarge
+      - c5n.large
+      - c5n.xlarge
+      - c5n.2xlarge
+      - c5n.4xlarge
+      - c5n.9xlarge
+      - c5n.18xlarge
+      - cc2.8xlarge
+      - cr1.8xlarge
+      - d2.xlarge
+      - d2.2xlarge
+      - d2.4xlarge
+      - d2.8xlarge
+      - f1.2xlarge
+      - f1.4xlarge
+      - f1.16xlarge
+      - g2.2xlarge
+      - g2.8xlarge
+      - g3s.xlarge
+      - g3.4xlarge
+      - g3.8xlarge
+      - g3.16xlarge
+      - h1.2xlarge
+      - h1.4xlarge
+      - h1.8xlarge
+      - h1.16xlarge
+      - hs1.8xlarge
+      - i2.xlarge
+      - i2.2xlarge
+      - i2.4xlarge
+      - i2.8xlarge
+      - i3.large
+      - i3.xlarge
+      - i3.2xlarge
+      - i3.4xlarge
+      - i3.8xlarge
+      - i3.16xlarge
+      - i3.metal
+      - i3en.large
+      - i3en.xlarge
+      - i3en.2xlarge
+      - i3en.3xlarge
+      - i3en.6xlarge
+      - i3en.12xlarge
+      - i3en.24xlarge
+      - m5.large
+      - m5.xlarge
+      - m5.2xlarge
+      - m5.4xlarge
+      - m5.8xlarge
+      - m5.12xlarge
+      - m5.16xlarge
+      - m5.24xlarge
+      - m5.metal
+      - m5a.large
+      - m5a.xlarge
+      - m5a.2xlarge
+      - m5a.4xlarge
+      - m5a.8xlarge
+      - m5a.12xlarge
+      - m5a.16xlarge
+      - m5a.24xlarge
+      - m5ad.large
+      - m5ad.xlarge
+      - m5ad.2xlarge
+      - m5ad.4xlarge
+      - m5ad.12xlarge
+      - m5ad.24xlarge
+      - m5d.large
+      - m5d.xlarge
+      - m5d.2xlarge
+      - m5d.4xlarge
+      - m5d.8xlarge
+      - m5d.12xlarge
+      - m5d.16xlarge
+      - m5d.24xlarge
+      - m5d.metal
+      - m5dn.large
+      - m5dn.xlarge
+      - m5dn.2xlarge
+      - m5dn.4xlarge
+      - m5dn.8xlarge
+      - m5dn.12xlarge
+      - m5dn.16xlarge
+      - m5dn.24xlarge
+      - m5n.large
+      - m5n.xlarge
+      - m5n.2xlarge
+      - m5n.4xlarge
+      - m5n.8xlarge
+      - m5n.12xlarge
+      - m5n.16xlarge
+      - m5n.24xlarge
+      - p2.xlarge
+      - p2.8xlarge
+      - p2.16xlarge
+      - p3.2xlarge
+      - p3.8xlarge
+      - p3.16xlarge
+      - p3dn.24xlarge
+      - g4dn.xlarge
+      - g4dn.2xlarge
+      - g4dn.4xlarge
+      - g4dn.8xlarge
+      - g4dn.12xlarge
+      - g4dn.16xlarge
+      - g4dn.metal
+      - r5.large
+      - r5.xlarge
+      - r5.2xlarge
+      - r5.4xlarge
+      - r5.8xlarge
+      - r5.12xlarge
+      - r5.16xlarge
+      - r5.24xlarge
+      - r5.metal
+      - r5a.large
+      - r5a.xlarge
+      - r5a.2xlarge
+      - r5a.4xlarge
+      - r5a.8xlarge
+      - r5a.12xlarge
+      - r5a.16xlarge
+      - r5a.24xlarge
+      - r5ad.large
+      - r5ad.xlarge
+      - r5ad.2xlarge
+      - r5ad.4xlarge
+      - r5ad.12xlarge
+      - r5ad.24xlarge
+      - r5d.large
+      - r5d.xlarge
+      - r5d.2xlarge
+      - r5d.4xlarge
+      - r5d.8xlarge
+      - r5d.12xlarge
+      - r5d.16xlarge
+      - r5d.24xlarge
+      - r5d.metal
+      - r5dn.large
+      - r5dn.xlarge
+      - r5dn.2xlarge
+      - r5dn.4xlarge
+      - r5dn.8xlarge
+      - r5dn.12xlarge
+      - r5dn.16xlarge
+      - r5dn.24xlarge
+      - r5n.large
+      - r5n.xlarge
+      - r5n.2xlarge
+      - r5n.4xlarge
+      - r5n.8xlarge
+      - r5n.12xlarge
+      - r5n.16xlarge
+      - r5n.24xlarge
+      - t1.micro
+      - t2.nano
+      - t2.micro
+      - t2.small
+      - t2.medium
+      - t2.large
+      - t2.xlarge
+      - t2.2xlarge
+      - t3.nano
+      - t3.micro
+      - t3.small
+      - t3.medium
+      - t3.large
+      - t3.xlarge
+      - t3.2xlarge
+      - t3a.nano
+      - t3a.micro
+      - t3a.small
+      - t3a.medium
+      - t3a.large
+      - t3a.xlarge
+      - t3a.2xlarge
+      - u-6tb1.metal
+      - u-9tb1.metal
+      - u-12tb1.metal
+      - x1.16xlarge
+      - x1.32xlarge
+      - x1e.xlarge
+      - x1e.2xlarge
+      - x1e.4xlarge
+      - x1e.8xlarge
+      - x1e.16xlarge
+      - x1e.32xlarge
+      - z1d.large
+      - z1d.xlarge
+      - z1d.2xlarge
+      - z1d.3xlarge
+      - z1d.6xlarge
+      - z1d.12xlarge
+      - z1d.metal
+    ConstraintDescription: Must be a valid EC2 instance type
+    Description: EC2 instance type for the node instances
+
+Resources:
+
+  Vpc1:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: !Ref Vpc1Cidr
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub "vpc1-${AWS::StackName}"
+
+  Vpc1v6Cidr1:
+    Type: AWS::EC2::VPCCidrBlock
+    Properties:
+      VpcId: !Ref Vpc1
+      AmazonProvidedIpv6CidrBlock: true
+
+  Vpc1v6Cidr2:
+    Type: AWS::EC2::VPCCidrBlock
+    Properties:
+      VpcId: !Ref Vpc1
+      AmazonProvidedIpv6CidrBlock: true
+
+  ### IGW for the VPC
+  Vpc1Igw:
+    Type: 'AWS::EC2::InternetGateway'
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub "igw-${AWS::StackName}"
+  Vpc1IgwAattach:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      VpcId: !Ref Vpc1
+      InternetGatewayId: !Ref Vpc1Igw
+
+  #### Subnet-PublicMgmt #####
+  PubMgmtSubnetAz1:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref Vpc1
+      CidrBlock: !Ref PubMgmtSubnetAz1Cidr
+      AvailabilityZone: !Select ['0', !Ref AvailabilityZones]
+      Tags:
+        - Key: kubernetes.io/role/elb
+          Value: 1
+        - Key: Name
+          Value: !Sub "pubMgmt-Az1-${AWS::StackName}"
+
+  PubMgmtSubnetAz2:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref Vpc1
+      CidrBlock: !Ref PubMgmtSubnetAz2Cidr
+      AvailabilityZone: !Select ['1', !Ref AvailabilityZones]
+      Tags:
+        - Key: kubernetes.io/role/elb
+          Value: 1
+        - Key: Name
+          Value: !Sub "pubMgmt-Az2-${AWS::StackName}"
+
+  PubMgmtSubnetRt:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref Vpc1
+      Tags:
+        - Key: Name
+          Value: !Sub "pubMgmt-SubnetRt-${AWS::StackName}"
+
+  PubMgmtRtDfltRt:
+    Type: 'AWS::EC2::Route'
+    DependsOn: Vpc1IgwAattach
+    Properties:
+      RouteTableId: !Ref PubMgmtSubnetRt
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref Vpc1Igw
+
+  PubMgmtAz1RtAssoc:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PubMgmtSubnetAz1
+      RouteTableId: !Ref PubMgmtSubnetRt
+  PubMgmtAz2RtAssoc:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PubMgmtSubnetAz2
+      RouteTableId: !Ref PubMgmtSubnetRt
+
+  ### NATGWs for the VPC
+  EipNatGwAz1:
+    Type: 'AWS::EC2::EIP'
+    Properties:
+      Domain: Vpc1
+  NatGatewayAz1:
+    Type: 'AWS::EC2::NatGateway'
+    Properties:
+      AllocationId: !GetAtt 'EipNatGwAz1.AllocationId'
+      SubnetId: !Ref PubMgmtSubnetAz1
+      Tags:
+        - Key: Name
+          Value: !Sub "natGwAz1-${AWS::StackName}"
+
+  EipNatGwAz2:
+    Type: 'AWS::EC2::EIP'
+    Properties:
+      Domain: Vpc1
+  NatGatewayAz2:
+    Type: 'AWS::EC2::NatGateway'
+    Properties:
+      AllocationId: !GetAtt 'EipNatGwAz2.AllocationId'
+      SubnetId: !Ref PubMgmtSubnetAz2
+      Tags:
+        - Key: Name
+          Value: !Sub "natGwAz2-${AWS::StackName}"
+
+  #### Subnet-PrivK8s #####
+  PrivK8sSubnetAz1:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref Vpc1
+      CidrBlock: !Ref PrivK8sSubnetAz1Cidr
+      AvailabilityZone: !Select ['0', !Ref AvailabilityZones]
+      Tags:
+        - Key: kubernetes.io/role/internal-elb
+          Value: 1
+        - Key: Name
+          Value: !Sub "PrivK8s-Az1-${AWS::StackName}"
+        - Key: karpenter.sh/discovery
+          Value: !Sub "eks-${AWS::StackName}"
+  PrivK8sSubnetAz2:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref Vpc1
+      CidrBlock: !Ref PrivK8sSubnetAz2Cidr
+      AvailabilityZone: !Select ['1', !Ref AvailabilityZones]
+      Tags:
+        - Key: kubernetes.io/role/internal-elb
+          Value: 1
+        - Key: Name
+          Value: !Sub "PrivK8s-Az2-${AWS::StackName}"
+        - Key: karpenter.sh/discovery
+          Value: !Sub "eks-${AWS::StackName}"
+
+  ### Subnet Route Table for Private Subnets
+  PrivK8sAz1SubnetRt:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref Vpc1
+      Tags:
+        - Key: Name
+          Value: !Sub "PrivK8sAz1SubnetRt-${AWS::StackName}"
+  PrivK8sAz2SubnetRt:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref Vpc1
+      Tags:
+        - Key: Name
+          Value: !Sub "PrivK8sAz2SubnetRt-${AWS::StackName}"
+  PrivK8sAz1DfltRt:
+    Type: 'AWS::EC2::Route'
+    Properties:
+      RouteTableId: !Ref PrivK8sAz1SubnetRt
+      DestinationCidrBlock: '0.0.0.0/0'
+      NatGatewayId: !Ref NatGatewayAz1
+  PrivK8sAz2DfltRt:
+    Type: 'AWS::EC2::Route'
+    Properties:
+      RouteTableId: !Ref PrivK8sAz2SubnetRt
+      DestinationCidrBlock: '0.0.0.0/0'
+      NatGatewayId: !Ref NatGatewayAz2
+  PrivK8sAz1RtAssoc:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PrivK8sSubnetAz1
+      RouteTableId: !Ref PrivK8sAz1SubnetRt
+  PrivK8sAz2RtAssoc:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PrivK8sSubnetAz2
+      RouteTableId: !Ref PrivK8sAz2SubnetRt
+
+  ### Create Multus Subnets and route table
+  MultusSubnet1Az1:
+    Type: 'AWS::EC2::Subnet'
+    DependsOn: Vpc1v6Cidr1
+    Properties:
+      VpcId: !Ref Vpc1
+      CidrBlock: !Ref MultusSubnet1Az1Cidr
+      AvailabilityZone: !Select ['0', !Ref AvailabilityZones]
+      Tags:
+        - Key: Name
+          Value: !Sub "Multus1Az1-${AWS::StackName}"
+
+  MultusSubnet1Az2:
+    Type: 'AWS::EC2::Subnet'
+    DependsOn: Vpc1v6Cidr2
+    Properties:
+      VpcId: !Ref Vpc1
+      CidrBlock: !Ref MultusSubnet1Az2Cidr
+      AvailabilityZone: !Select ['1', !Ref AvailabilityZones]
+      Tags:
+        - Key: Name
+          Value: !Sub "Multus1Az2-${AWS::StackName}"
+
+  MultusSubnet2Az1:
+    Type: 'AWS::EC2::Subnet'
+    DependsOn: Vpc1v6Cidr1
+    Properties:
+      VpcId: !Ref Vpc1
+      CidrBlock: !Ref MultusSubnet2Az1Cidr
+      Ipv6CidrBlock:
+        Fn::Sub:
+          - "${VpcPart}${SubnetPart}"
+          - SubnetPart: '01::/64'
+            VpcPart: !Select [ 0, !Split [ '00::/56', !Select [ 0, !GetAtt Vpc1.Ipv6CidrBlocks ]]]
+      # Ipv6Native: True
+      AvailabilityZone: !Select ['0', !Ref AvailabilityZones]
+      Tags:
+        - Key: Name
+          Value: !Sub "Multus2Az1-${AWS::StackName}"
+
+  MultusSubnet2Az2:
+    Type: 'AWS::EC2::Subnet'
+    DependsOn: Vpc1v6Cidr2
+    Properties:
+      VpcId: !Ref Vpc1
+      CidrBlock: !Ref MultusSubnet2Az2Cidr
+      Ipv6CidrBlock:
+        Fn::Sub:
+          - "${VpcPart}${SubnetPart}"
+          - SubnetPart: '01::/64'
+            VpcPart: !Select [ 0, !Split [ '00::/56', !Select [ 1, !GetAtt Vpc1.Ipv6CidrBlocks ]]]
+      # Ipv6Native: True
+      AvailabilityZone: !Select ['1', !Ref AvailabilityZones]
+      Tags:
+        - Key: Name
+          Value: !Sub "Multus2Az2-${AWS::StackName}"
+
+  ### Subnet Route Table for Multus Subnets
+  Multus1SubnetRt:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref Vpc1
+      Tags:
+        - Key: Name
+          Value: !Sub "Multus1SubnetRt-${AWS::StackName}"
+  Multus2SubnetRt:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref Vpc1
+      Tags:
+        - Key: Name
+          Value: !Sub "Multus2SubnetRt-${AWS::StackName}"
+  Multus1RtAssocAz1:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref MultusSubnet1Az1
+      RouteTableId: !Ref Multus1SubnetRt
+  Multus1RtAssocAz2:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref MultusSubnet1Az2
+      RouteTableId: !Ref Multus1SubnetRt  
+  Multus2RtAssocAz1:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref MultusSubnet2Az1
+      RouteTableId: !Ref Multus2SubnetRt   
+  Multus2RtAssocAz2:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref MultusSubnet2Az2
+      RouteTableId: !Ref Multus2SubnetRt
+  MultusAz1DfltRt1:
+    Type: 'AWS::EC2::Route'
+    Properties:
+      RouteTableId: !Ref Multus1SubnetRt
+      DestinationCidrBlock: '0.0.0.0/0'
+      NatGatewayId: !Ref NatGatewayAz1
+  MultusAz2DfltRt1:
+    Type: 'AWS::EC2::Route'
+    Properties:
+      RouteTableId: !Ref Multus2SubnetRt
+      DestinationCidrBlock: '0.0.0.0/0'
+      NatGatewayId: !Ref NatGatewayAz2
+
+  ### Security Groups ###
+  Vpc1SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: Vpc1SecurityGroup
+      GroupDescription: Sec Group to allow intra VPC traffic
+      VpcId: !Ref Vpc1
+      SecurityGroupIngress:
+        - CidrIp: !Ref Vpc1Cidr
+          IpProtocol: -1
+          FromPort: 0
+          ToPort: 65535
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          IpProtocol: "-1"
+        - CidrIpv6: ::/0
+          IpProtocol: "-1"
+      Tags:
+        - Key: "Name"
+          Value: "Vpc1SecurityGroup"
+
+  ## EKS cluster IAM Role ##
+  EksIamRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - eks.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      RoleName: !Sub "eksIamRole-${AWS::StackName}"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
+        - arn:aws:iam::aws:policy/AmazonEKSServicePolicy
+
+  EksControlSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Cluster communication with worker nodes
+      VpcId: !Ref Vpc1
+      Tags:
+        - Key: karpenter.sh/discovery
+          Value: !Sub "eks-${AWS::StackName}"
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          IpProtocol: "-1"
+        - CidrIpv6: ::/0
+          IpProtocol: "-1"
+
+  EksControlSecurityGroupInboundRule:
+    Type: AWS::EC2::SecurityGroupIngress
+    DependsOn: [EksControlSecurityGroup]
+    Properties:
+      IpProtocol: -1
+      FromPort: -1
+      ToPort: -1
+      GroupId: !Ref EksControlSecurityGroup
+      SourceSecurityGroupId: !GetAtt EksControlSecurityGroup.GroupId
+
+  #############################################################################
+  # IAM roles for EKS Node Groups
+  #############################################################################
+
+  EksNodeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: This IAM Role is used for the EKS Cluster Node Members
+      RoleName: !Sub "eksNodeRole-${AWS::StackName}"
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - ec2.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+        - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: EksIpv6Policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:UnassignIpv6Addresses
+                  - ec2:AssignIpv6Addresses
+                Resource: "*"
+
+  # EKS Cluster
+  EksCluster:
+    Type: AWS::EKS::Cluster
+    DependsOn: [EksIamRole, PubMgmtSubnetAz1, PubMgmtSubnetAz2, PrivK8sSubnetAz1, PrivK8sSubnetAz2, EksControlSecurityGroup]
+    Properties:
+      Name: !Sub "eks-${AWS::StackName}"
+      RoleArn: !GetAtt EksIamRole.Arn
+      ResourcesVpcConfig:
+        SecurityGroupIds:
+          - !Ref EksControlSecurityGroup
+        SubnetIds:
+          - !Ref PubMgmtSubnetAz1
+          - !Ref PubMgmtSubnetAz2
+          - !Ref PrivK8sSubnetAz1
+          - !Ref PrivK8sSubnetAz2
+      Tags:
+        - Key: Name
+          Value: !Sub "eks-${AWS::StackName}"
+        - Key: karpenter.sh/discovery
+          Value: !Sub "eks-${AWS::StackName}"
+
+# Nodegroup for Karpenter PODs
+  EksNodeGroup:
+    Type: AWS::EKS::Nodegroup
+    DependsOn: [ EksCluster ]
+    Properties:
+      ClusterName: !Ref EksCluster
+      Labels:
+        eks-managed-ng: true
+      LaunchTemplate:
+        Id:
+          Ref: LaunchTemplate
+      NodeRole: !GetAtt EksNodeRole.Arn
+      CapacityType: !Ref CapacityType
+      ScalingConfig:
+        MinSize: !Ref NodeAutoScalingGroupMinSize
+        DesiredSize: !Ref NodeAutoScalingGroupDesiredCapacity
+        MaxSize: !Ref NodeAutoScalingGroupMaxSize
+      Subnets:
+        - !Ref PrivK8sSubnetAz1
+        - !Ref PrivK8sSubnetAz2
+
+  LaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        BlockDeviceMappings:
+        - DeviceName: "/dev/xvda"
+          Ebs:
+          #  Iops: 3000
+          #  Throughput: 125
+          #  Encrypted: true
+            VolumeSize: 30
+            VolumeType: gp3
+            Encrypted: true
+        MetadataOptions:
+          HttpPutResponseHopLimit: 2
+          HttpTokens: optional
+        InstanceType: !Ref NodeInstanceType     
+        HibernationOptions:
+          Configured: true
+
+
+Outputs:
+  Vpc1Id:
+    Description: VPC ID
+    Value: !Ref Vpc1
+    Export:
+      Name: !Sub "${AWS::StackName}-Vpc1Id"
+  Vpc1Cidr:
+    Description: VPC1 CIDR
+    Value: !GetAtt Vpc1.CidrBlock
+    Export:
+      Name: !Sub "${AWS::StackName}-Vpc1Cidr"
+  Vpc1v6Cidr1:
+    Description: VPC1 IPV6 CIDR
+    Value: !Select [0, !GetAtt 'Vpc1.Ipv6CidrBlocks']
+    Export:
+      Name: !Sub "${AWS::StackName}-Vpc1v6Cidr1"
+  Vpc1v6Cidr2:
+    Description: VPC1 IPV6 CIDR2
+    Value: !Select [1, !GetAtt 'Vpc1.Ipv6CidrBlocks']
+    Export:
+      Name: !Sub "${AWS::StackName}-Vpc1v6Cidr2"
+  EksCluster:
+    Description: EKS Cluster Name
+    Value: !Ref EksCluster
+    Export:
+      Name: !Sub "${AWS::StackName}-EksCluster"
+  EksNodeRoleArn:
+    Description: EKS NodeRole Arn
+    Value: !GetAtt EksNodeRole.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-EksNodeRoleArn"
+  EksControlSecurityGroup:
+    Description: EKS Control plane security group
+    Value: !Ref EksControlSecurityGroup
+    Export:
+      Name: !Sub "${AWS::StackName}-EksControlSecurityGroup"
+  PubMgmtSubnetAz1:
+    Description: EKS WorkerNode PublicSubnet at AZ1. This will be used for management network.
+    Value: !Ref PubMgmtSubnetAz1
+    Export:
+      Name: !Sub "${AWS::StackName}-PubMgmtSubnetAz1"
+  PubMgmtSubnetAz2:
+    Description: EKS WorkerNode PublicSubnet at AZ2. This will be used for management network.
+    Value: !Ref PubMgmtSubnetAz2
+    Export:
+      Name: !Sub "${AWS::StackName}-PubMgmtSubnetAz2"
+  PrivK8sSubnetAz1:
+    Description: EKS WorkerNode PrivateSubnet at AZ1. This will be used for NF's service network.
+    Value: !Ref PrivK8sSubnetAz1
+    Export:
+      Name: !Sub "${AWS::StackName}-PrivK8sSubnetAz1"
+  PrivK8sSubnetAz2:
+    Description: EKS WorkerNode PrivateSubnet at AZ2. This will be used for NF's service network.
+    Value: !Ref PrivK8sSubnetAz2
+    Export:
+      Name: !Sub "${AWS::StackName}-PrivK8sSubnetAz2"
+  MultusSubnet1Az1:
+    Description: Multus Primary Subnet1 at AZ1.
+    Value: !Ref MultusSubnet1Az1
+    Export:
+      Name: !Sub "${AWS::StackName}-MultusSubnet1Az1"
+  MultusSubnet1Az2:
+    Description: Multus Primary Subnet1 at AZ2.
+    Value: !Ref MultusSubnet1Az2
+    Export:
+      Name: !Sub "${AWS::StackName}-MultusSubnet1Az2"
+  MultusSubnet2Az1:
+    Description: Multus Primary Subnet2 at AZ1.
+    Value: !Ref MultusSubnet2Az1
+    Export:
+      Name: !Sub "${AWS::StackName}-MultusSubnet2Az1"
+  MultusSubnet2Az2:
+    Description: Multus Primary Subnet2 at AZ2.
+    Value: !Ref MultusSubnet2Az2
+    Export:
+      Name: !Sub "${AWS::StackName}-MultusSubnet2Az2"
+  Vpc1SecurityGroup:
+    Description: VPC1 security group
+    Value: !Ref Vpc1SecurityGroup
+    Export:
+      Name: !Sub "${AWS::StackName}-Vpc1SecurityGroup"
+  EksNodeGroup:
+    Description: EKS Node Group
+    Value: !Ref EksNodeGroup
