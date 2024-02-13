@@ -35,9 +35,7 @@ In this setup we will create VPC, EKS Clusters, EKS Managed Node Group, Security
 
 
 ``` sh
-sudo chmod +x tools/installTools.sh
-
-./tools/installTools.sh
+sudo chmod +x tools/installTools.sh && ./tools/installTools.sh
 ```
 
 2.	Create a Cloudformation stack using template vpc-infra-mng.yaml. Select 2 Availability zones (e.g. us-west-2a & us-west-2b). Name your stack as karpenterwithmultus (you will need this stack name later in your Cloudshell environment). You can keep all other parameters default. You can use the AWCLI command below or use the AWS Console using the Cloudformation menu.
