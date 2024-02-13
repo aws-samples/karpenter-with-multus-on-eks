@@ -769,6 +769,9 @@ Resources:
         InstanceType: !Ref NodeInstanceType     
         HibernationOptions:
           Configured: true
+        SecurityGroupIds:
+        - !Ref Vpc1SecurityGroup
+        - !Ref EksControlSecurityGroup          
 
 
 Outputs:
