@@ -36,6 +36,7 @@ In this setup we will create VPC, EKS Clusters, EKS Managed Node Group, Security
 
 ``` sh
 sudo chmod +x tools/installTools.sh && ./tools/installTools.sh
+
 ```
 
 2.	Create a Cloudformation stack using template vpc-infra-mng.yaml. Select 2 Availability zones (e.g. us-west-2a & us-west-2b). Name your stack as karpenterwithmultus (you will need this stack name later in your Cloudshell environment). You can keep all other parameters default. You can use the AWCLI command below or use the AWS Console using the Cloudformation menu.
@@ -438,6 +439,9 @@ net2      Link encap:Ethernet  HWaddr 02:8B:1B:57:0D:35
 ```
 
 ***NOTE: Observe the Multus pod IPs. These IPs belongs to the range we defined in the NetworkAttachmentDefinitions file (step 6)***
+
+***NOTE: If you need to automatically allocate the multus pod IPs as secondary IPs on their corresponding Multus ENIs follow this [Github link](https://github.com/aws-samples/eks-automated-ipmgmt-multus-pods)***
+
 
 (Optional) You can examine the time it took to provision the Karpenter nodepool by examining Node-Latency-For-K8s log on the newly created nodes. Retrieve the logs of node-latency-for-k8s-node-latency-for-k8s-chart-xxxxx pods running on the nodepool worker. For example (logs might take 5 minutes to populate)
 
