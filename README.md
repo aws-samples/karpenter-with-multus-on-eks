@@ -42,6 +42,7 @@ sudo chmod +x tools/installTools.sh && ./tools/installTools.sh
 
 ```sh
 aws cloudformation create-stack --stack-name karpenterwithmultus --template-body file://cfn-templates/vpc-infra-mng.yaml --parameters ParameterKey=AvailabilityZones,ParameterValue=us-west-2a\\,us-west-2b --region us-west-2  --capabilities CAPABILITY_NAMED_IAM
+
 ```
 
 Before executing the next steps - ensure the first CFN stack creation is completed Please note that the stack creation may take ~ 15 minutes as it builds the EKS cluster & Worker nodes.
@@ -64,6 +65,7 @@ export CLUSTER_NAME="eks-${VPC_STACK_NAME}"
 export AWS_DEFAULT_REGION=us-west-2 
 export AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
 export TEMPOUT=$(mktemp)
+
 ```
 
 ***NOTE: VPC_STACK_NAME is the name you gave for your cloudformation template vpc-infra-mng.yaml.***
@@ -78,6 +80,7 @@ Update your kubeconfig and test EKS control plane access
 aws eks update-kubeconfig --name $CLUSTER_NAME
 kubectl get nodes
 kubectl get pods -A
+
 ```
 
 If you don't get an error, it means you have access to the K8S cluster
@@ -89,6 +92,7 @@ If you don't get an error, it means you have access to the K8S cluster
 ```sh
 kubectl apply -f https://raw.githubusercontent.com/aws/amazon-vpc-cni-k8s/master/config/multus/v4.0.2-eksbuild.1/multus-daemonset-thick.yml
 kubectl get daemonsets.apps -n kube-system
+
 ```
 
 5.	We need to have CIDR reservations on the Multus subnets since we will dedicate a portion of the IPs for Multus pod IPs. CIDR reservation with explicit flag tells the VPC not to touch these CIDR blocks when creating VPC resources like ENI. Execute CIDR reservation commands below on the Multus subnets. We are going to reserve /27.
@@ -101,7 +105,8 @@ aws ec2 create-subnet-cidr-reservation --subnet-id ${Multus1Az2subnetId} --cidr 
 Multus2Az1subnetId=$(aws ec2 describe-subnets --filters "Name=tag:Name,Values=Multus2Az1-${VPC_STACK_NAME}" --query "Subnets[*].SubnetId" --output text)
 aws ec2 create-subnet-cidr-reservation --subnet-id ${Multus2Az1subnetId} --cidr 10.0.6.32/27 --reservation-type explicit --region ${AWS_DEFAULT_REGION}
 Multus2Az2subnetId=$(aws ec2 describe-subnets --filters "Name=tag:Name,Values=Multus2Az2-${VPC_STACK_NAME}" --query "Subnets[*].SubnetId" --output text)
-aws ec2 create-subnet-cidr-reservation --subnet-id ${Multus2Az2subnetId} --cidr 10.0.7.32/27 --reservation-type explicit --region ${AWS_DEFAULT_REGION} 
+aws ec2 create-subnet-cidr-reservation --subnet-id ${Multus2Az2subnetId} --cidr 10.0.7.32/27 --reservation-type explicit --region ${AWS_DEFAULT_REGION}
+
 ```
 ***NOTE: if you are getting an error - subnet ID doesnt exists - check if you have defined the correct AWS_DEFAULT_REGION env variable***
 
@@ -112,6 +117,7 @@ kubectl apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/whereabo
 kubectl apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/whereabouts/master/doc/crds/whereabouts.cni.cncf.io_ippools.yaml
 kubectl apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/whereabouts/master/doc/crds/whereabouts.cni.cncf.io_overlappingrangeipreservations.yaml
 kubectl get daemonsets.apps -n kube-system
+
 ```
 
 7.	Apply NetworkAttachmentDefinitions on the cluster. This will configure the multus interfaces on the pods when we create the application pods later. If you will inspect the file you will notice that the range we defined are the CIDR reservation prefixes we set aside in the previous step.
@@ -119,6 +125,7 @@ kubectl get daemonsets.apps -n kube-system
 ```sh
 kubectl apply -f  sample-application/multus-nad-az1.yaml
 kubectl apply -f  sample-application/multus-nad-az2.yaml
+
 ```
 
 ## IAM Role Setup
@@ -132,6 +139,7 @@ curl -fsSL https://raw.githubusercontent.com/aws/karpenter/"${KARPENTER_VERSION}
   --template-file "${TEMPOUT}" \
   --capabilities CAPABILITY_NAMED_IAM \
   --parameter-overrides "ClusterName=${CLUSTER_NAME}"
+
 ```
 
 ```sh
@@ -152,12 +160,14 @@ eksctl create iamserviceaccount \
   --attach-policy-arn "arn:aws:iam::${AWS_ACCOUNT_ID}:policy/KarpenterControllerPolicy-${CLUSTER_NAME}" \
   --role-only \
   --approve
+
 ```
 
 ```sh
 export KARPENTER_IAM_ROLE_ARN="arn:${AWS_PARTITION}:iam::${AWS_ACCOUNT_ID}:role/${CLUSTER_NAME}-karpenter"
 
 echo $KARPENTER_IAM_ROLE_ARN
+
 ```
 
 9.	Create a IAM policy for additional actions required for Multus and attach it to Karpenter Node Role. The userdata section of EC2NodeClass contains a script that creates, attaches, and configures ENIs to Karpenter provisioned nodes. The nodes need the right policies to be attached to the Karpenter node role.
@@ -166,6 +176,7 @@ echo $KARPENTER_IAM_ROLE_ARN
 aws iam create-policy --policy-name karpenter-multus-policy --policy-document file://config/multus-policy.json | jq -r '.Policy.Arn'
 karpentermultuspolicyarn=$(aws iam list-policies | jq -r '.Policies[] | select(.PolicyName=="karpenter-multus-policy") | .Arn')
 aws iam attach-role-policy --policy-arn $karpentermultuspolicyarn --role-name KarpenterNodeRole-${CLUSTER_NAME}
+
 ```
 
 
@@ -173,6 +184,7 @@ aws iam attach-role-policy --policy-arn $karpentermultuspolicyarn --role-name Ka
 
 ```sh
 aws iam create-service-linked-role --aws-service-name spot.amazonaws.com || true
+
 ```
 
 ***NOTE:this step is optional and needed only if you want to use spot instances on your Karpenter nodepool***
@@ -195,12 +207,14 @@ helm upgrade --install karpenter oci://public.ecr.aws/karpenter/karpenter --vers
   --set controller.resources.limits.cpu=1 \
   --set controller.resources.limits.memory=1Gi \
   --wait
+
 ```
 
 12.	Execute the following command to check if the Karpenter pods are in Running state.
 
 ```sh
 kubectl get pods -n karpenter -o wide
+
 ```
 
 13.	Update the nodepool.yaml files with the Multus subnet tag name, AZ and security group tag names. For further reading, more details of Karpenter nodepool configuration can be found [here](https://karpenter.sh/docs/concepts/nodepools/).
@@ -214,6 +228,7 @@ sed -i "s/##Multus1SecGrpAZ1##/Vpc1SecurityGroup/g" config/nodepool.yaml
 sed -i "s/##Multus2SecGrpAZ1##/Vpc1SecurityGroup/g" config/nodepool.yaml
 sed -i "s/##Multus1SecGrpAZ2##/Vpc1SecurityGroup/g" config/nodepool.yaml
 sed -i "s/##Multus2SecGrpAZ2##/Vpc1SecurityGroup/g" config/nodepool.yaml
+
 ```
 
 Change the AZ's in the nodepool.yaml, run the following command using the correct AZ names that you used on your deployment. In this example we are using us-west-2a and us-west-2b
@@ -221,23 +236,27 @@ Change the AZ's in the nodepool.yaml, run the following command using the correc
 ```sh
 AZ1='us-west-2a'
 AZ2='us-west-2b'
+
 ```
 
 ```sh
 sed -i "s/##AVAILABILITY_ZONE1##/${AZ1}/g" config/nodepool.yaml
 sed -i "s/##AVAILABILITY_ZONE2##/${AZ2}/g" config/nodepool.yaml
+
 ```
 
 Update the EKS Cluster name using the following commands 
 
 ```sh
 sed -i "s/##CLUSTER_NAME##/${CLUSTER_NAME}/g" config/nodepool.yaml
+
 ```
 
 Apply the karpenter nodepool configuration
 
 ```sh
 kubectl apply -f config/nodepool.yaml
+
 ```
 
 ***NOTE: If you will inspect the config/nodepool.yaml file you will notice a customized userdata section of EC2NodeClass. The script inside the userdata provisions, attaches and configures the MUTLUS ENIs during EC2 nodepool creation. This is where we are configuring the MULTUS ENI LCM on the nodepools. If you need to additional node tuning, you can also do so in the userdata section.***
@@ -246,6 +265,7 @@ You can check Karpenter controller if your nodepool config has any errors
 
 ```sh
 kubectl logs -f -n karpenter -l app.kubernetes.io/name=karpenter -c controller
+
 ```
 
 14.	In order to address a race condition that occurs between Multus daemonset pods and application pods both being scheduled at the same time on nodepool nodes, Karpenter needs to be configured with StartupTaints for the nodepool. The StartupTaint will prevent the application pods from being scheduled on the new nodes until Multus is ready and the taint is removed. To automate the removal of taint on the nodes, a DaemonSet based solution is used here.
@@ -254,24 +274,28 @@ First lets create a namespace for the daemonset that will clear the taint
 
 ```sh
 kubectl create namespace cleartaints
+
 ```
 
 We have to provide RBAC controls on the daemonset-clear-taints so that it can clear the taint on the node. A service account limited to the namespace cleartaints, role and rolebinding between the service account for cleartaints namespace and the role it is permitted to use, will be created with the following command.
 
 ```sh
 kubectl apply -f config/sa-role-rolebinding.yaml
+
 ```
 
 Create and apply the daemonset called **daemonset-clear-taints** under namespace called cleartaints
 
 ```sh
 kubectl apply -f config/cleartaints.yaml
+
 ```
 
 Check the daemonset pods. At this point you won’t be seeing any running daemonset since cleartaints will only run on the Karpenter nodepools
 
 ```sh
 kubectl  get ds -n cleartaints
+
 ```
 
 ## Deployment of Node-Latency-For-K8s
@@ -310,6 +334,7 @@ export VERSION="v0.1.10"
 	--set env[6].name="NODE_NAME" \
 	--set-string env[6].value=\(v1\:spec\.nodeName\) \
 	--wait
+
 ```
 
 ## Deployment of a Sample Application
@@ -321,11 +346,13 @@ Update the availability zone with the correct AZ name on each file below multito
 ```sh
 sed -i "s/##AVAILABILITY_ZONE1##/${AZ1}/g" sample-application/multitool-deployment-az1.yaml
 sed -i "s/##AVAILABILITY_ZONE2##/${AZ2}/g" sample-application/multitool-deployment-az2.yaml
+
 ```
 
 ```sh
 kubectl apply -f  sample-application/multitool-deployment-az1.yaml
 kubectl apply -f  sample-application/multitool-deployment-az2.yaml
+
 ```
 
 Each of the deployments have affinity key "karpenter-node", thus these application pods will be scheduled only on the worker nodes with the label "karpenter-node". As the karpenter nodepool configuration assigns a label when the deployment is created, karpenter scales a node to schedule/run the pods of these deployments.
@@ -334,18 +361,21 @@ Watch for Karpenter scaling of a new EKS worker node using the following command
 
 ```sh
 kubectl get nodes -o wide
+
 ```
 
 Check Karpenter Logs 
 
 ```sh
 kubectl logs -f -n karpenter -l app.kubernetes.io/name=karpenter -c controller
+
 ```
 
 Once Karpenter launches new EC2 instances and joins the EKS cluster in Ready state, Pods that were in pending state go to Running state 
 
 ```sh
 kubectl get pods -o wide
+
 ```
 
 The resulting architecture would now look like this below with additional Karpenter workers with Multus interfaces.
@@ -449,10 +479,12 @@ kubectl scale --replicas=5 deployment/scaleouttestappaz1
 kubectl scale --replicas=5 deployment/scaleouttestappaz2
 
 kubectl get nodes -o wide -w
+
 ```
 
 ```sh
 kubectl get pods
+
 ```
 
 19.	(Optional) Let’s collect one more data point on the Karpenter scale-out speed: retrieve the logs of node-latency-for-k8s-node-latency-for-k8s-chart-xxxxx pods running on the newly created nodepool workers.
@@ -492,6 +524,7 @@ Scale in
 ```sh
 kubectl scale --replicas=1 deployment/scaleouttestappaz1
 kubectl scale --replicas=1 deployment/scaleouttestappaz2
+
 ```
 
 Wait for Karpenter to terminate the existing nodepool, once terminated scale out again. In this example you can only scale your pods up to the limit of the number of IP addresses available on your Network address definition
@@ -499,6 +532,7 @@ Wait for Karpenter to terminate the existing nodepool, once terminated scale out
 ```sh
 kubectl scale --replicas=10 deployment/scaleouttestappaz1
 kubectl scale --replicas=10 deployment/scaleouttestappaz2
+
 ```
 
 # Cleanup Steps
@@ -515,6 +549,7 @@ helm uninstall -n node-latency-for-k8s node-latency-for-k8s
 aws iam detach-role-policy --policy-arn $karpentermultuspolicyarn --role-name KarpenterNodeRole-${CLUSTER_NAME}
 karpentermultuspolicyarn=$(aws iam list-policies | jq -r '.Policies[] | select(.PolicyName=="karpenter-multus-policy") | .Arn')
 aws iam delete-policy --policy-arn $karpentermultuspolicyarn
+
 ```
 
 Delete all Cloudformation stacks in the reverse order
