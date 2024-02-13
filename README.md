@@ -36,6 +36,7 @@ In this setup we will create VPC, EKS Clusters, EKS Managed Node Group, Security
 
 ``` sh
 sudo chmod +x tools/installTools.sh
+
 ./tools/installTools.sh
 ```
 
