@@ -435,9 +435,6 @@ net2      Link encap:Ethernet  HWaddr 02:8B:1B:57:0D:35
 
 ***NOTE: Observe the Multus pod IPs. These IPs belongs to the range we defined in the NetworkAttachmentDefinitions file (step 6)***
 
-***NOTE: If you need to automatically allocate the multus pod IPs as secondary IPs on their corresponding Multus ENIs follow this [Github link](https://github.com/aws-samples/eks-automated-ipmgmt-multus-pods)***
-
-
 (Optional) You can examine the time it took to provision the Karpenter nodepool by examining Node-Latency-For-K8s log on the newly created nodes. Retrieve the logs of node-latency-for-k8s-node-latency-for-k8s-chart-xxxxx pods running on the nodepool worker. For example (logs might take 5 minutes to populate)
 
 ```sh
@@ -467,6 +464,11 @@ $ kubectl -n node-latency-for-k8s logs node-latency-for-k8s-node-latency-for-k8s
 ```
 
 ***NOTE: Keep in mind that the execution of the userdata script (approx. 20s-25s) during bootup contributes to node ready time. Otherwise Karpenter node ready time would be around 30s***
+
+## (Optional) Automatic Assignment of Multus Pod IPs
+
+If you need to automatically assign the Multus pod IPs as secondary IPs on its corresponding Multus ENIs so traffic can reach to/from the Multus pod IPs, just follow this [Github link](https://github.com/aws-samples/eks-automated-ipmgmt-multus-pods) and use either InitContainer IP management Solution or Sidecar IP management Solution with your application.
+
 
 ## Scaling Action
 
