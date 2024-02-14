@@ -5,18 +5,25 @@ metadata:
 spec:
   config: '{
       "cniVersion": "0.3.0",
-      "type": "ipvlan",
-      "master": "eth1",
-      "mode": "l2",
-      "ipam": {
-        "type": "whereabouts",
-        "datastore": "kubernetes",
-        "kubernetes": { "kubeconfig": "/etc/cni/net.d/whereabouts.d/whereabouts.kubeconfig" },
-        "range": "10.0.4.32-10.0.4.63/24",
-        "log_file" : "/tmp/whereabouts.log",
-        "log_level" : "debug",
-        "gateway": "10.0.4.1"
-      }
+      "plugins": [
+        {
+          "type": "ipvlan",
+          "master": "eth1",
+          "mode": "l2",
+          "ipam": {
+            "type": "whereabouts",
+            "datastore": "kubernetes",
+            "kubernetes": { "kubeconfig": "/etc/cni/net.d/whereabouts.d/whereabouts.kubeconfig" },
+            "range": "10.0.4.32-10.0.4.63/24",
+            "log_file" : "/tmp/whereabouts.log",
+            "log_level" : "debug",
+            "gateway": "10.0.4.1"
+          }
+        },
+        { 
+          "type": "sbr"
+        }
+      ]
     }'
 ---
 apiVersion: "k8s.cni.cncf.io/v1"
@@ -26,16 +33,23 @@ metadata:
 spec:
   config: '{
       "cniVersion": "0.3.0",
-      "type": "ipvlan",
-      "master": "eth2",
-      "mode": "l2",
-      "ipam": {
-        "type": "whereabouts",
-        "datastore": "kubernetes",
-        "kubernetes": { "kubeconfig": "/etc/cni/net.d/whereabouts.d/whereabouts.kubeconfig" },
-        "range": "10.0.6.32-10.0.6.63/24",
-        "log_file" : "/tmp/whereabouts.log",
-        "log_level" : "debug",
-        "gateway": "10.0.6.1"
-      }
+      "plugins": [
+        {
+          "type": "ipvlan",
+          "master": "eth2",
+          "mode": "l2",
+          "ipam": {
+            "type": "whereabouts",
+            "datastore": "kubernetes",
+            "kubernetes": { "kubeconfig": "/etc/cni/net.d/whereabouts.d/whereabouts.kubeconfig" },
+            "range": "10.0.6.32-10.0.6.63/24",
+            "log_file" : "/tmp/whereabouts.log",
+            "log_level" : "debug",
+            "gateway": "10.0.6.1"
+          }
+        },
+        {
+          "type": "sbr"
+        }
+      ]    
     }'
