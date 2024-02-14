@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: daemonset-clear-taints
+  namespace: cleartaints
+  labels:
+    app: daemonset-clear-taints
+spec:
+  selector:
+    matchLabels:
+      app: daemonset-clear-taints
+  template:
+    metadata:
+      labels:
+        app: daemonset-clear-taints
+    spec:
+      nodeSelector:
+        karpenter-node: "true"
+      serviceAccountName: sa-for-cleartaint
+      containers:
+      - name: daemonset-clear-taints
+        image: alpine/k8s:1.28.4
+        command: ["/bin/sh", "-c"]
+        args: ["TOKEN=`curl -X PUT \"http://169.254.169.254/latest/api/token\" -H \"X-aws-ec2-metadata-token-ttl-seconds: 21600\"`; while true; do node=`curl -H \"X-aws-ec2-metadata-token: $TOKEN\"  -s http://169.254.169.254/latest/meta-data/hostname`; if test -f /host/etc/cni/net.d/00-multus.conf; then kubectl taint nodes ${node} multus/not-ready=true:NoSchedule-; if [[ $? -ne 0 ]]; then sleep 1; else sleep infinity; fi; fi; done"]
+        volumeMounts:
+        - mountPath: /host/etc/cni/net.d
+          name: cni
+      tolerations:
+      - effect: NoSchedule
+        key: multus/not-ready
+        value: "true"
+      volumes:
+      - hostPath:
+          path: /etc/cni/net.d
+          type: ""
+        name: cni

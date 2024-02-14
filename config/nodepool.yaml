@@ -1,0 +1,181 @@
+# This example NodePool will provision instances using the AL2 EKS-Optimized AMI.
+# The UserData defined in spec.UserData needs to be in the MIME-multipart format,
+# and will be prepended to a Karpenter managed section that will bootstrap the kubelet.
+---
+apiVersion: karpenter.sh/v1beta1
+kind: NodePool
+metadata:
+  name: nodepool
+  annotations:
+    kubernetes.io/description: "NodePool for workers with multus"
+spec:
+  template:
+    metadata:
+      labels:
+        karpenter-node: "true"
+    spec:
+      startupTaints:
+        - key: multus/not-ready
+          effect: NoSchedule
+          value: "true"
+      requirements:
+        - key: karpenter-node
+          operator: Exists
+        - key: karpenter.k8s.aws/instance-category
+          operator: In
+          values: ["m", "c", "r"]
+        - key: "karpenter.k8s.aws/instance-cpu"
+          operator: In
+          values: ["2","4","8","16"]
+        - key: "karpenter.k8s.aws/instance-family"
+          operator: In
+          values: ["m5", "c5", "m6i", "c6i", "r6i"]
+        - key: "karpenter.k8s.aws/instance-hypervisor"
+          operator: In
+          values: ["nitro"]
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["amd64"]
+        - key: kubernetes.io/os
+          operator: In
+          values: ["linux"]
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["on-demand"]
+        - key: "topology.kubernetes.io/zone"
+          operator: In
+          values: ["##AVAILABILITY_ZONE1##", "##AVAILABILITY_ZONE2##"]
+      nodeClassRef:
+        name: al2
+  disruption:
+    consolidationPolicy: WhenEmpty
+    consolidateAfter: 120s
+  limits:
+    cpu: "500"
+    memory: 500Gi
+  weight: 10
+---
+apiVersion: karpenter.k8s.aws/v1beta1
+kind: EC2NodeClass
+metadata:
+  name: al2
+  annotations:
+    kubernetes.io/description: "EC2NodeClass for running Amazon Linux 2 nodes with custom user data"
+spec:
+  amiFamily: AL2 # Amazon Linux 2
+  role: "KarpenterNodeRole-##CLUSTER_NAME##" # replace with your cluster name 
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: "##CLUSTER_NAME##" # replace with your cluster name
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: "##CLUSTER_NAME##" # replace with your cluster name
+  userData: |
+    MIME-Version: 1.0
+    Content-Type: multipart/mixed; boundary="BOUNDARY"
+   
+    --BOUNDARY
+    Content-Type: text/x-shellscript; charset="us-ascii"
+
+    #!/bin/bash -xe
+    set -o xtrace
+
+    # Define the Availability Zones     
+    AZ1="##AVAILABILITY_ZONE1##"
+    AZ2="##AVAILABILITY_ZONE2##"
+
+    # Define Multus subnets tag Name
+    subnetListAZ1=(##Multus1SubnetAZ1## ##Multus2SubnetAZ1##)
+    subnetListAZ2=(##Multus1SubnetAZ2## ##Multus2SubnetAZ2##)
+
+    # Define the list of Security groups
+    secGrpListAZ1=(##Multus1SecGrpAZ1## ##Multus2SecGrpAZ1##)
+    secGrpListAZ2=(##Multus1SecGrpAZ2## ##Multus2SecGrpAZ2##)
+
+    TOKEN=`curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600"`
+    EC2_INSTANCE_ID="`curl -H "X-aws-ec2-metadata-token: $TOKEN" -s http://169.254.169.254/latest/meta-data/instance-id`"
+    REGION=`curl -H "X-aws-ec2-metadata-token: $TOKEN" -s http://169.254.169.254/latest/dynamic/instance-identity/document | jq .region -r`
+    
+    AZ="`curl -H "X-aws-ec2-metadata-token: $TOKEN" -s http://169.254.169.254/latest/dynamic/instance-identity/document | jq -r .availabilityZone`"
+    
+    # Function to Create & attach Multus ENI
+
+    createAttachMultusEni () {
+      subnet=$1
+      secGrp=$2
+      subnetId=`aws ec2 describe-subnets --filters "Name=tag:Name,Values=$subnet" --query "Subnets[*].SubnetId" --output text`
+      secGrpId=`aws ec2 describe-security-groups --filters "Name=tag:Name,Values=$secGrp" --query "SecurityGroups[*].GroupId" --output text`
+
+      ### Get ipv6 cidr if any
+      subnetipv6Cidr=`aws ec2 describe-subnets --subnet-ids ${subnetId} --query "Subnets[*].Ipv6CidrBlockAssociationSet[*].Ipv6CidrBlock" --output text`
+
+      if [ -n "$subnetipv6Cidr" ]; then
+        crIntOutput=$(aws ec2 create-network-interface --subnet-id ${subnetId} --description "Multus$((n+1))" --groups ${secGrpId} --ipv6-address-count 1 \
+           --tag-specifications "ResourceType="network-interface",Tags=[{Key="node.k8s.amazonaws.com/no_manage",Value="true"}]" | jq -r '.NetworkInterface.NetworkInterfaceId, .NetworkInterface.PrivateIpAddresses[0].PrivateIpAddress')
+      else
+        crIntOutput=$(aws ec2 create-network-interface --subnet-id ${subnetId} --description "Multus$((n+1))" --groups ${secGrpId} \
+            --tag-specifications "ResourceType="network-interface",Tags=[{Key="node.k8s.amazonaws.com/no_manage",Value="true"}]" | jq -r '.NetworkInterface.NetworkInterfaceId, .NetworkInterface.PrivateIpAddresses[0].PrivateIpAddress')
+      fi
+
+      multusId=`echo $crIntOutput|cut -d' ' -f 1`
+      MultusAttachmentId=$(aws ec2 attach-network-interface --network-interface-id ${multusId} --instance-id $EC2_INSTANCE_ID --device-index $((n+1)) |jq -r '.AttachmentId')
+      aws ec2 modify-network-interface-attribute --network-interface-id $multusId --no-source-dest-check
+      aws ec2 modify-network-interface-attribute --attachment "AttachmentId"="$MultusAttachmentId","DeleteOnTermination"="True" --network-interface-id $multusId
+
+    }
+
+    # Check current AZ and create corresponding ENI for the respective AZ subnets
+    if [ "$AZ" = "$AZ1" ]; then
+
+      # Create & Attach Multus ENI's on AZ1 workers
+      n=0
+      for subnet in "${subnetListAZ1[@]}";
+      do
+        createAttachMultusEni ${subnet} ${secGrpListAZ1[$n]}
+        n=$((n+1))
+      done
+
+    else
+
+      # Create & Attach Multus ENI's on AZ2 workers
+      n=0
+      for subnet in "${subnetListAZ2[@]}";
+      do
+        createAttachMultusEni ${subnet} ${secGrpListAZ2[$n]}
+        n=$((n+1))
+      done
+
+    fi
+
+    sleep 1
+    
+    # Configure sysctl parameters
+    echo "net.ipv4.conf.default.rp_filter = 0" | tee -a /etc/sysctl.conf
+    echo "net.ipv4.conf.all.rp_filter = 0" | tee -a /etc/sysctl.conf
+    sudo sysctl -p
+
+    sleep 2
+
+    # Bring up Multus ENI on Node and add ifup to rc.local 
+    ls /sys/class/net/|grep -v eth0|grep eth > /tmp/ethList
+    cat /tmp/ethList |while read line
+    do
+      ip link set dev "$line" up
+      echo "ip link set dev "$line" up" >> /etc/rc.d/rc.local
+    done
+    
+    chmod +x /etc/rc.d/rc.local
+    systemctl start rc-local.service
+    systemctl enable rc-local.service
+
+    cat << EOF > /etc/systemd/system/kubelet.service.d/90-kubelet-extra-args.conf
+    [Service]
+    Environment='USERDATA_EXTRA_ARGS=--node-labels=is_worker=true --cpu-manager-policy=static'
+    EOF
+    # this kubelet.service update is for the version below than EKS 1.24 (e.g. up to 1.23)
+    # but still you can keep the line even if you use EKS 1.24 or higher
+    sed -i 's/KUBELET_EXTRA_ARGS/KUBELET_EXTRA_ARGS $USERDATA_EXTRA_ARGS/' /etc/systemd/system/kubelet.service
+    # this update is for the EKS 1.24 or higher.
+    sed -i 's/KUBELET_EXTRA_ARGS/KUBELET_EXTRA_ARGS $USERDATA_EXTRA_ARGS/' /etc/eks/containerd/kubelet-containerd.service
+
+    --BOUNDARY--
