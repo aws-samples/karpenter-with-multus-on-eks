@@ -18,11 +18,6 @@ Please find further details on Multus & Karpenter in the following links -
 
 [6] <https://github.com/aws-samples/eks-automated-ipmgmt-multus-pods>
 
-## Introduction
-
-The main use case of Karpenter is to provision worker nodes in a Kubernetes cluster during deployment and scale out events. In this blogpost we introduce additional use case where Karpenter is used for provisioning nodepools hosting applications that use Multus CNI. This deployment model decouples your application worker nodes from the EKS managed nodegroups. This approach provides benefits like 1/ your application workers are not limited to a specific instance type and size, you have a wide selection of instance types and family to choose from; 2/ your application scale-out capabilities are not tied to an EC2 autoscaling group providing you the benefit to scale with more flexibility than with an EKS nodegroup autoscaling group. And, by not relying on EC2 Autoscaling group, Karpenter is quick to provision worker nodes by directly using [EC2 fleet API](https://karpenter.sh/docs/faq/#how-does-karpenter-dynamically-select-instance-types)s which can be critical for application scale-out scenarios. Standard Karpenter based node provisioning does not support Multus CNI as it creates nodes attached to single VPC subnet. This blogpost provides the solution for Multus via Karpenter by introducing user-data based elastic network interface (ENI) management via EC2NodeClass.
-
-
 ## Prerequisites
 
 * An [AWS Cloudshell](https://aws.amazon.com/cloudshell/)
