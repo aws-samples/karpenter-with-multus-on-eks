@@ -467,7 +467,7 @@ $ kubectl -n node-latency-for-k8s logs node-latency-for-k8s-node-latency-for-k8s
 
 ## (Optional) Automatic Assignment of Multus Pod IPs
 
-If you need to automatically assign the Multus pod IPs as secondary IPs on its corresponding Multus ENIs so traffic can reach to/from the Multus pod IPs, just follow this [Github link](https://github.com/aws-samples/eks-automated-ipmgmt-multus-pods) and use either InitContainer IP management Solution or Sidecar IP management Solution with your application.
+For Multus connectivity to the pods, it is essential to assign the pod Multus IPs as secondary IPs on their corresponding Multus ENIs on the worker node. You can automatically assign the Multus IP as secondary IPs on Multus ENIs, by following this [Github link](https://github.com/aws-samples/eks-automated-ipmgmt-multus-pods) and use either InitContainer based IP management Solution or Sidecar based IP management Solution within the application pod.
 
 
 ## Scaling Action
