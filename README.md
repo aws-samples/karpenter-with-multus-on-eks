@@ -54,7 +54,7 @@ The resulting architecture will look like this below
 ```sh
 export KARPENTER_NAMESPACE=karpenter
 export K8S_VERSION=1.29
-export KARPENTER_VERSION=v0.34.0
+export KARPENTER_VERSION=v0.32.3
 export AWS_PARTITION="aws"
 export VPC_STACK_NAME="karpenterwithmultus"
 export CLUSTER_NAME="eks-${VPC_STACK_NAME}"
