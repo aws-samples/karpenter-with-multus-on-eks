@@ -53,7 +53,7 @@ The resulting architecture will look like this below
 
 ```sh
 export KARPENTER_NAMESPACE=karpenter
-export K8S_VERSION=1.28
+export K8S_VERSION=1.29
 export KARPENTER_VERSION=v0.32.3
 export AWS_PARTITION="aws"
 export VPC_STACK_NAME="karpenterwithmultus"
@@ -66,7 +66,7 @@ export TEMPOUT=$(mktemp)
 
 ***NOTE: VPC_STACK_NAME is the name you gave for your cloudformation template vpc-infra-mng.yaml.***
 
-***NOTE: Pay special attention to the default region value. In later steps your nodepool.yaml config is configured with availability zones.***
+***NOTE: Pay special attention to the default region value and correct EKS version. In later steps your nodepool.yaml config is configured with availability zones.***
 
 ***NOTE: This example uses Cloudshell as your admin node. Environment variables are lost when Cloudshell times out. Feel free to use your own admin node.***
 
