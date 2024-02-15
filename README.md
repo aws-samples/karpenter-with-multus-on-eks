@@ -66,7 +66,7 @@ export TEMPOUT=$(mktemp)
 
 ***NOTE: VPC_STACK_NAME is the name you gave for your cloudformation template vpc-infra-mng.yaml.***
 
-***NOTE: Pay special attention to the default region value. In later steps your nodepool.yaml config is configured with availability zones.***
+***NOTE: Pay special attention to the default region value and correct EKS version. In later steps your nodepool.yaml config is configured with availability zones.***
 
 ***NOTE: This example uses Cloudshell as your admin node. Environment variables are lost when Cloudshell times out. Feel free to use your own admin node.***
 
