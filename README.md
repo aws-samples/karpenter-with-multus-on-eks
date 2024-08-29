@@ -53,12 +53,12 @@ The resulting architecture will look like this below
 
 ```sh
 export KARPENTER_NAMESPACE=karpenter
-export K8S_VERSION=1.29
-export KARPENTER_VERSION=v0.32.3
+export K8S_VERSION=1.30
+export KARPENTER_VERSION=1.0.1
 export AWS_PARTITION="aws"
 export VPC_STACK_NAME="karpenterwithmultus"
 export CLUSTER_NAME="eks-${VPC_STACK_NAME}"
-export AWS_DEFAULT_REGION=us-west-2 
+export AWS_DEFAULT_REGION=us-west-2
 export AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
 export TEMPOUT=$(mktemp)
 
@@ -80,6 +80,12 @@ kubectl get pods -A
 ```
 
 If you don't get an error, it means you have access to the K8S cluster
+
+***NOTE:If you used the Fargate Cfn template, you need to restart your CoreDNS Pods***
+
+```sh
+kubectl rollout restart -n kube-system deployment coredns
+```
 
 ## Plugin Setup
 
@@ -116,6 +122,12 @@ kubectl get daemonsets.apps -n kube-system
 
 ```
 
+***NOTE:If you used the Fargate Cfn template, you need to patch the whereabouts daemonset so it wont run on the fargate nodes***
+
+```sh
+kubectl patch ds whereabouts -n kube-system --patch '{"spec":{"template":{"spec":{"nodeSelector":{"karpenter-node":"true"}}}}}'
+```
+
 7.	Apply NetworkAttachmentDefinitions on the cluster. This will configure the multus interfaces on the pods when we create the application pods later. If you will inspect the file you will notice that the range we defined are the CIDR reservation prefixes we set aside in the previous step.
 
 ```sh
@@ -129,14 +141,14 @@ kubectl apply -f  sample-application/multus-nad-az2.yaml
 8.	Create Karpenter IAM role and other pre-requisites needed for Karpenter. You should see "Successfully created/updated stack - <Karpenter-${CLUSTER_NAME}>" at the end of this step.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/aws/karpenter/"${KARPENTER_VERSION}"/website/content/en/preview/getting-started/getting-started-with-karpenter/cloudformation.yaml  > $TEMPOUT \
+curl -fsSL https://raw.githubusercontent.com/aws/karpenter-provider-aws/v"${KARPENTER_VERSION}"/website/content/en/preview/getting-started/getting-started-with-karpenter/cloudformation.yaml  > "${TEMPOUT}" \
 && aws cloudformation deploy \
   --stack-name "Karpenter-${CLUSTER_NAME}" \
   --template-file "${TEMPOUT}" \
   --capabilities CAPABILITY_NAMED_IAM \
   --parameter-overrides "ClusterName=${CLUSTER_NAME}"
-
 ```
+
 
 ```sh
 eksctl create iamidentitymapping \
@@ -195,16 +207,16 @@ helm registry logout public.ecr.aws
 
 helm upgrade --install karpenter oci://public.ecr.aws/karpenter/karpenter --version ${KARPENTER_VERSION} --namespace karpenter --create-namespace \
   --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=${KARPENTER_IAM_ROLE_ARN} \
-  --set settings.aws.clusterName=${CLUSTER_NAME} \
-  --set settings.aws.defaultInstanceProfile=KarpenterNodeInstanceProfile-${CLUSTER_NAME} \
-  --set settings.aws.interruptionQueueName=${CLUSTER_NAME} \
+  --set settings.clusterName=${CLUSTER_NAME} \
+  --set settings.defaultInstanceProfile=KarpenterNodeInstanceProfile-${CLUSTER_NAME} \
+  --set settings.interruptionQueueName=${CLUSTER_NAME} \
   --set controller.resources.requests.cpu=1 \
   --set controller.resources.requests.memory=1Gi \
   --set controller.resources.limits.cpu=1 \
   --set controller.resources.limits.memory=1Gi \
   --wait
 
-```
+  ```
 
 12.	Execute the following command to check if the Karpenter pods are in Running state.
 
