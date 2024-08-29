@@ -2,10 +2,10 @@
 # The UserData defined in spec.UserData needs to be in the MIME-multipart format,
 # and will be prepended to a Karpenter managed section that will bootstrap the kubelet.
 ---
-apiVersion: karpenter.sh/v1beta1
+apiVersion: karpenter.sh/v1
 kind: NodePool
 metadata:
-  name: nodepool
+  name: default
   annotations:
     kubernetes.io/description: "NodePool for workers with multus"
 spec:
@@ -46,7 +46,9 @@ spec:
           operator: In
           values: ["##AVAILABILITY_ZONE1##", "##AVAILABILITY_ZONE2##"]
       nodeClassRef:
-        name: al2
+        name: al2023
+        kind: EC2NodeClass
+        group: karpenter.k8s.aws
   disruption:
     consolidationPolicy: WhenEmpty
     consolidateAfter: 120s
@@ -55,14 +57,20 @@ spec:
     memory: 500Gi
   weight: 10
 ---
-apiVersion: karpenter.k8s.aws/v1beta1
+apiVersion: karpenter.k8s.aws/v1
 kind: EC2NodeClass
 metadata:
-  name: al2
+  name: al2023
   annotations:
     kubernetes.io/description: "EC2NodeClass for running Amazon Linux 2 nodes with custom user data"
 spec:
-  amiFamily: AL2 # Amazon Linux 2
+  amiSelectorTerms:
+    - alias: al2023@v20240817
+  metadataOptions:
+    httpEndpoint: enabled
+    httpProtocolIPv6: disabled
+    httpPutResponseHopLimit: 2 
+    httpTokens: required
   role: "KarpenterNodeRole-##CLUSTER_NAME##" # replace with your cluster name 
   subnetSelectorTerms:
     - tags:
@@ -72,12 +80,12 @@ spec:
         karpenter.sh/discovery: "##CLUSTER_NAME##" # replace with your cluster name
   userData: |
     MIME-Version: 1.0
-    Content-Type: multipart/mixed; boundary="BOUNDARY"
+    Content-Type: multipart/mixed; boundary="//"
    
-    --BOUNDARY
+    --//
     Content-Type: text/x-shellscript; charset="us-ascii"
 
-    #!/bin/bash -xe
+    #!/bin/bash
     set -o xtrace
 
     # Define the Availability Zones     
@@ -147,35 +155,24 @@ spec:
 
     fi
 
-    sleep 1
-    
     # Configure sysctl parameters
     echo "net.ipv4.conf.default.rp_filter = 0" | tee -a /etc/sysctl.conf
     echo "net.ipv4.conf.all.rp_filter = 0" | tee -a /etc/sysctl.conf
     sudo sysctl -p
 
-    sleep 2
-
-    # Bring up Multus ENI on Node and add ifup to rc.local 
-    ls /sys/class/net/|grep -v eth0|grep eth > /tmp/ethList
-    cat /tmp/ethList |while read line
-    do
-      ip link set dev "$line" up
-      echo "ip link set dev "$line" up" >> /etc/rc.d/rc.local
-    done
-    
-    chmod +x /etc/rc.d/rc.local
-    systemctl start rc-local.service
-    systemctl enable rc-local.service
-
-    cat << EOF > /etc/systemd/system/kubelet.service.d/90-kubelet-extra-args.conf
+    echo "#!/usr/bin/env bash" > /etc/pm/power.d/node-init-script.sh
+    ls /sys/class/net/ > /tmp/ethList;cat /tmp/ethList |while read line ; do sudo ifconfig $line up; done
+    grep ens /tmp/ethList |while read line ; do echo "ifconfig $line up" >> /etc/pm/power.d/node-init-script.sh; done
+    chmod +x /etc/pm/power.d/node-init-script.sh
+    cat << EOF > /etc/systemd/system/node-init-script.service
+    [Unit]
+    Description=Run node-init-script
+    After=cloud-init.service
     [Service]
-    Environment='USERDATA_EXTRA_ARGS=--node-labels=is_worker=true --cpu-manager-policy=static'
+    ExecStart=/etc/pm/power.d/node-init-script.sh
+    [Install]
+    WantedBy=network-online.target
     EOF
-    # this kubelet.service update is for the version below than EKS 1.24 (e.g. up to 1.23)
-    # but still you can keep the line even if you use EKS 1.24 or higher
-    sed -i 's/KUBELET_EXTRA_ARGS/KUBELET_EXTRA_ARGS $USERDATA_EXTRA_ARGS/' /etc/systemd/system/kubelet.service
-    # this update is for the EKS 1.24 or higher.
-    sed -i 's/KUBELET_EXTRA_ARGS/KUBELET_EXTRA_ARGS $USERDATA_EXTRA_ARGS/' /etc/eks/containerd/kubelet-containerd.service
+    systemctl enable node-init-script.service
 
-    --BOUNDARY--
+    --//
