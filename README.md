@@ -26,7 +26,7 @@ Please find further details on Multus & Karpenter in the following links -
 
 In this setup we will create VPC, EKS Clusters, EKS Managed Node Group, Security Groups, and associated VPC components.
 
-1.	We will use AWS Cloudshell environment from here to configure the EKS cluster and deploy a sample application. Go to your Cloudshell console, download this git repository and start by executing the following script to Install the needed tools (awscli, kubectl, eksctl, helm etc) needed.
+1.	We will use AWS Cloudshell environment from here to configure the EKS cluster and deploy a sample application. Go to your Cloudshell console, download this git repository and start by executing the following script to Install the needed tools (awscli, kubectl, eksctl, helm etc) needed. The  focus of this guide is the deployment of an EKS Managed NodeGroup, however you have an option to use Fargate as an alternative deployment.
 
 
 ``` sh
@@ -34,12 +34,21 @@ sudo chmod +x tools/installTools.sh && ./tools/installTools.sh
 
 ```
 
-2.	Create a Cloudformation stack using template vpc-infra-mng.yaml. Select 2 Availability zones (e.g. us-west-2a & us-west-2b). Name your stack as karpenterwithmultus (you will need this stack name later in your Cloudshell environment). You can keep all other parameters default. You can use the AWCLI command below or use the AWS Console using the Cloudformation menu.
+2.	Create a Cloudformation stack using template vpc-infra-mng.yaml (EKS Managed NodeGroup). Select 2 Availability zones (e.g. us-west-2a & us-west-2b). Name your stack as karpenterwithmultus (you will need this stack name later in your Cloudshell environment). You can keep all other parameters default. You can use the AWCLI command below or use the AWS Console using the Cloudformation menu.
 
 ```sh
 aws cloudformation create-stack --stack-name karpenterwithmultus --template-body file://cfn-templates/vpc-infra-mng.yaml --parameters ParameterKey=AvailabilityZones,ParameterValue=us-west-2a\\,us-west-2b --region us-west-2  --capabilities CAPABILITY_NAMED_IAM
 
 ```
+
+***NOTE: If you want to deploy Fargate instead of EKS Managed NodeGroup, use this command instead or refer to the corresponding Cfn template***
+
+```sh
+aws cloudformation create-stack --stack-name karpenterwithmultus --template-body file://cfn-templates/vpc-infra-fargate.yaml --parameters ParameterKey=AvailabilityZones,ParameterValue=us-west-2a\\,us-west-2b --region us-west-2  --capabilities CAPABILITY_NAMED_IAM
+
+```
+
+
 
 Before executing the next steps - ensure the first CFN stack creation is completed Please note that the stack creation may take ~ 15 minutes as it builds the EKS cluster & Worker nodes.
 
@@ -53,12 +62,12 @@ The resulting architecture will look like this below
 
 ```sh
 export KARPENTER_NAMESPACE=karpenter
-export K8S_VERSION=1.29
-export KARPENTER_VERSION=v0.32.3
+export K8S_VERSION=1.30
+export KARPENTER_VERSION=1.0.1
 export AWS_PARTITION="aws"
 export VPC_STACK_NAME="karpenterwithmultus"
 export CLUSTER_NAME="eks-${VPC_STACK_NAME}"
-export AWS_DEFAULT_REGION=us-west-2 
+export AWS_DEFAULT_REGION=us-west-2
 export AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
 export TEMPOUT=$(mktemp)
 
@@ -80,6 +89,12 @@ kubectl get pods -A
 ```
 
 If you don't get an error, it means you have access to the K8S cluster
+
+***NOTE: If you used the Fargate Cfn template, you need to restart your CoreDNS Pods***
+
+```sh
+kubectl rollout restart -n kube-system deployment coredns
+```
 
 ## Plugin Setup
 
@@ -116,6 +131,12 @@ kubectl get daemonsets.apps -n kube-system
 
 ```
 
+***NOTE: If you used the Fargate Cfn template, you need to patch the whereabouts daemonset so it wont run on the fargate nodes***
+
+```sh
+kubectl patch ds whereabouts -n kube-system --patch '{"spec":{"template":{"spec":{"nodeSelector":{"karpenter-node":"true"}}}}}'
+```
+
 7.	Apply NetworkAttachmentDefinitions on the cluster. This will configure the multus interfaces on the pods when we create the application pods later. If you will inspect the file you will notice that the range we defined are the CIDR reservation prefixes we set aside in the previous step.
 
 ```sh
@@ -129,14 +150,14 @@ kubectl apply -f  sample-application/multus-nad-az2.yaml
 8.	Create Karpenter IAM role and other pre-requisites needed for Karpenter. You should see "Successfully created/updated stack - <Karpenter-${CLUSTER_NAME}>" at the end of this step.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/aws/karpenter/"${KARPENTER_VERSION}"/website/content/en/preview/getting-started/getting-started-with-karpenter/cloudformation.yaml  > $TEMPOUT \
+curl -fsSL https://raw.githubusercontent.com/aws/karpenter-provider-aws/v"${KARPENTER_VERSION}"/website/content/en/preview/getting-started/getting-started-with-karpenter/cloudformation.yaml  > "${TEMPOUT}" \
 && aws cloudformation deploy \
   --stack-name "Karpenter-${CLUSTER_NAME}" \
   --template-file "${TEMPOUT}" \
   --capabilities CAPABILITY_NAMED_IAM \
   --parameter-overrides "ClusterName=${CLUSTER_NAME}"
-
 ```
+
 
 ```sh
 eksctl create iamidentitymapping \
@@ -183,7 +204,7 @@ aws iam create-service-linked-role --aws-service-name spot.amazonaws.com || true
 
 ```
 
-***NOTE:this step is optional and needed only if you want to use spot instances on your Karpenter nodepool***
+***NOTE: the step above is optional and needed only if you want to use spot instances on your Karpenter nodepool***
 
 ## Installation of Karpenter
 
@@ -195,16 +216,16 @@ helm registry logout public.ecr.aws
 
 helm upgrade --install karpenter oci://public.ecr.aws/karpenter/karpenter --version ${KARPENTER_VERSION} --namespace karpenter --create-namespace \
   --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=${KARPENTER_IAM_ROLE_ARN} \
-  --set settings.aws.clusterName=${CLUSTER_NAME} \
-  --set settings.aws.defaultInstanceProfile=KarpenterNodeInstanceProfile-${CLUSTER_NAME} \
-  --set settings.aws.interruptionQueueName=${CLUSTER_NAME} \
+  --set settings.clusterName=${CLUSTER_NAME} \
+  --set settings.defaultInstanceProfile=KarpenterNodeInstanceProfile-${CLUSTER_NAME} \
+  --set settings.interruptionQueueName=${CLUSTER_NAME} \
   --set controller.resources.requests.cpu=1 \
   --set controller.resources.requests.memory=1Gi \
   --set controller.resources.limits.cpu=1 \
   --set controller.resources.limits.memory=1Gi \
   --wait
 
-```
+  ```
 
 12.	Execute the following command to check if the Karpenter pods are in Running state.
 
