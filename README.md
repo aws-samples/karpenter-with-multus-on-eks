@@ -26,7 +26,7 @@ Please find further details on Multus & Karpenter in the following links -
 
 In this setup we will create VPC, EKS Clusters, EKS Managed Node Group, Security Groups, and associated VPC components.
 
-1.	We will use AWS Cloudshell environment from here to configure the EKS cluster and deploy a sample application. Go to your Cloudshell console, download this git repository and start by executing the following script to Install the needed tools (awscli, kubectl, eksctl, helm etc) needed. The  focus of this guide is the deployment of an EKS Managed NodeGroup, however you have an option to use Fargate as an alternarive deployment.
+1.	We will use AWS Cloudshell environment from here to configure the EKS cluster and deploy a sample application. Go to your Cloudshell console, download this git repository and start by executing the following script to Install the needed tools (awscli, kubectl, eksctl, helm etc) needed. The  focus of this guide is the deployment of an EKS Managed NodeGroup, however you have an option to use Fargate as an alternative deployment.
 
 
 ``` sh
@@ -90,7 +90,7 @@ kubectl get pods -A
 
 If you don't get an error, it means you have access to the K8S cluster
 
-***NOTE:If you used the Fargate Cfn template, you need to restart your CoreDNS Pods***
+***NOTE: If you used the Fargate Cfn template, you need to restart your CoreDNS Pods***
 
 ```sh
 kubectl rollout restart -n kube-system deployment coredns
@@ -131,7 +131,7 @@ kubectl get daemonsets.apps -n kube-system
 
 ```
 
-***NOTE:If you used the Fargate Cfn template, you need to patch the whereabouts daemonset so it wont run on the fargate nodes***
+***NOTE: If you used the Fargate Cfn template, you need to patch the whereabouts daemonset so it wont run on the fargate nodes***
 
 ```sh
 kubectl patch ds whereabouts -n kube-system --patch '{"spec":{"template":{"spec":{"nodeSelector":{"karpenter-node":"true"}}}}}'
@@ -204,7 +204,7 @@ aws iam create-service-linked-role --aws-service-name spot.amazonaws.com || true
 
 ```
 
-***NOTE:this step is optional and needed only if you want to use spot instances on your Karpenter nodepool***
+***NOTE: the step above is optional and needed only if you want to use spot instances on your Karpenter nodepool***
 
 ## Installation of Karpenter
 
