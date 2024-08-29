@@ -26,7 +26,7 @@ Please find further details on Multus & Karpenter in the following links -
 
 In this setup we will create VPC, EKS Clusters, EKS Managed Node Group, Security Groups, and associated VPC components.
 
-1.	We will use AWS Cloudshell environment from here to configure the EKS cluster and deploy a sample application. Go to your Cloudshell console, download this git repository and start by executing the following script to Install the needed tools (awscli, kubectl, eksctl, helm etc) needed.
+1.	We will use AWS Cloudshell environment from here to configure the EKS cluster and deploy a sample application. Go to your Cloudshell console, download this git repository and start by executing the following script to Install the needed tools (awscli, kubectl, eksctl, helm etc) needed. The  focus of this guide is the deployment of an EKS Managed NodeGroup, however you have an option to use Fargate as an alternarive deployment.
 
 
 ``` sh
@@ -34,12 +34,21 @@ sudo chmod +x tools/installTools.sh && ./tools/installTools.sh
 
 ```
 
-2.	Create a Cloudformation stack using template vpc-infra-mng.yaml. Select 2 Availability zones (e.g. us-west-2a & us-west-2b). Name your stack as karpenterwithmultus (you will need this stack name later in your Cloudshell environment). You can keep all other parameters default. You can use the AWCLI command below or use the AWS Console using the Cloudformation menu.
+2.	Create a Cloudformation stack using template vpc-infra-mng.yaml (EKS Managed NodeGroup). Select 2 Availability zones (e.g. us-west-2a & us-west-2b). Name your stack as karpenterwithmultus (you will need this stack name later in your Cloudshell environment). You can keep all other parameters default. You can use the AWCLI command below or use the AWS Console using the Cloudformation menu.
 
 ```sh
 aws cloudformation create-stack --stack-name karpenterwithmultus --template-body file://cfn-templates/vpc-infra-mng.yaml --parameters ParameterKey=AvailabilityZones,ParameterValue=us-west-2a\\,us-west-2b --region us-west-2  --capabilities CAPABILITY_NAMED_IAM
 
 ```
+
+***NOTE: If you want to deploy Fargate instead of EKS Managed NodeGroup, use this command instead or refer to the corresponding Cfn template***
+
+```sh
+aws cloudformation create-stack --stack-name karpenterwithmultus --template-body file://cfn-templates/vpc-infra-fargate.yaml --parameters ParameterKey=AvailabilityZones,ParameterValue=us-west-2a\\,us-west-2b --region us-west-2  --capabilities CAPABILITY_NAMED_IAM
+
+```
+
+
 
 Before executing the next steps - ensure the first CFN stack creation is completed Please note that the stack creation may take ~ 15 minutes as it builds the EKS cluster & Worker nodes.
 
