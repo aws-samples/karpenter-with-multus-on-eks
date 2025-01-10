@@ -65,7 +65,7 @@ metadata:
     kubernetes.io/description: "EC2NodeClass for running Amazon Linux 2 nodes with custom user data"
 spec:
   amiSelectorTerms:
-    - alias: al2023@v20240817
+    - alias: al2023@v20241109
   metadataOptions:
     httpEndpoint: enabled
     httpProtocolIPv6: disabled
