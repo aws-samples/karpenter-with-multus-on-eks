@@ -234,7 +234,7 @@ kubectl get pods -n karpenter -o wide
 
 ```
 
-13.	Update the nodepool.yaml files with the Multus subnet tag name, AZ and security group tag names. For further reading, more details of Karpenter nodepool configuration can be found [here](https://karpenter.sh/docs/concepts/nodepools/).
+13.	Update the nodepool.yaml files with the Multus subnet tag name, AZ and security group tag names. For further reading, more details of Karpenter nodepool configuration can be found [here](https://karpenter.sh/docs/concepts/nodepools/). Be sure to also check the  amiSelectorTerms value and update manualy if necesary.
 
 ```sh
 sed -i "s/##Multus1SubnetAZ1##/Multus1Az1-${VPC_STACK_NAME}/g" config/nodepool.yaml
